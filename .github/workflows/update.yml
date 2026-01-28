@@ -1,62 +1,38 @@
-name: update
+name: Update EPG India
+
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    # Runs at 2:00 AM UTC (7:30 AM Indian Standard Time) every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows you to run it manually
+
+permissions:
+  contents: write
+
 jobs:
-  main:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: tibdex/github-app-token@v1.8.2
-        if: ${{ !env.ACT }}
-        id: create-app-token
-        with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v4
-        if: ${{ !env.ACT }}
-        with:
-          token: ${{ steps.create-app-token.outputs.token }}
-      - name: setup git
-        run: |
-          git config user.name "iptv-bot[bot]"
-          git config user.email "84861620+iptv-bot[bot]@users.noreply.github.com"
-      - uses: actions/setup-node@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'npm'
-      - name: install dependencies
+
+      - name: Install dependencies
         run: npm install
-      - name: check *.channels.xml
-        run: npm run channels:lint
-      - name: update sites.md
-        run: npm run sites:update
-        env:
-          GH_TOKEN: ${{ steps.create-app-token.outputs.token }}
-      - run: git status
-      - name: commit changes to sites.md
-        if: ${{ !env.ACT && github.ref == 'refs/heads/master' }}
+
+      # This is the command that filters for India (Tata Play)
+      - name: Generate EPG (Tata Play)
+        run: npm run grab -- --site=tataplay.com
+
+      - name: Commit and Push changes
         run: |
-          SITE=SITES.md
-          CHANGED=$(git diff ${SITE})
-          if [ -n "${CHANGED}" ]; then
-            git add ${SITE}
-            git commit -m "[Bot] Update ${SITE}" -m "Committed by [iptv-bot](https://github.com/apps/iptv-bot) via [update](https://github.com/iptv-org/epg/actions/runs/${{ github.run_id }}) workflow." --no-verify
-            git push
-          fi
-      - name: generate .api/guides.json
-        run: npm run api:generate
-      - run: git status
-      - name: move .api/guides.json to iptv-org/api
-        uses: JamesIves/github-pages-deploy-action@4.1.1
-        if: ${{ !env.ACT && github.ref == 'refs/heads/master' }}
-        with:
-          repository-name: iptv-org/api
-          branch: gh-pages
-          folder: .api
-          token: ${{ steps.create-app-token.outputs.token }}
-          git-config-name: iptv-bot[bot]
-          git-config-email: 84861620+iptv-bot[bot]@users.noreply.github.com
-          commit-message: '[Bot] Deploy to iptv-org/api'
-          clean: false
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add guide.xml
+          git commit -m "Update guide.xml" || exit 0
+          git push
